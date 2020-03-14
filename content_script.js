@@ -5,7 +5,6 @@ var morphicId = /morphic_id:(\d+)/.exec(window.location.href)[1];
 var RESULTS_TO_SCRAPE = 400;
 var MAX_RETRIES = 5;
 var parsedResults = new Array();
-var resultsContainer = document.querySelector('#rg_s');
 
 function parseResultLink(link) {
   var href = link.getAttribute('href');
@@ -16,7 +15,7 @@ function parseResultLink(link) {
 }
 
 function canParseLink(link) {
-  return link !== null && link.getAttribute('href').match(linkRegex);
+  return link !== null && link.hasAttribute('href') && link.getAttribute('href').match(linkRegex);
 }
 
 function scrapeResults(retries = 0) {
@@ -53,10 +52,16 @@ function scrapeResults(retries = 0) {
     return;
   }
 
+  var resultsContainer = document.querySelector('.islrc');
+
   var i = parsedResults.length;
   var seeMoreButton = document.querySelector('#smb')
+
   console.log(`Attempting to scrape result number ${i}, retry number ${retries}`);
-  var resultLink = resultsContainer.querySelector(`div.rg_di[data-ri="${i}"]>a[href]`);
+
+  var resultLink = resultsContainer.querySelector(`div.isv-r[data-ri="${i}"]>a`);
+  resultLink.click()
+
   if (canParseLink(resultLink)) {
     console.log(`Got result number ${i}`);
     resultLink.scrollIntoView();
@@ -76,7 +81,7 @@ function scrapeResults(retries = 0) {
     setTimeout(scrapeResults, 1000, retries + 1);
   } else {
     console.log(`Didn't get result number ${i}, sleeping.`);
-    setTimeout(scrapeResults, 1000, retries + 1);
+    setTimeout(scrapeResults, 50, retries + 1);
   }
 }
 
