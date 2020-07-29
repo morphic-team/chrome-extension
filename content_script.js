@@ -4,6 +4,7 @@ var morphicId = /morphic_id:(\d+)/.exec(window.location.href)[1];
 
 var RESULTS_TO_SCRAPE = 400;
 var MAX_RETRIES = 5;
+var resultIndex = 0;
 var parsedResults = new Array();
 
 function parseResultLink(link) {
@@ -54,18 +55,26 @@ function scrapeResults(retries = 0) {
 
   var resultsContainer = document.querySelector('.islrc');
 
-  var i = parsedResults.length;
   var seeMoreButton = document.querySelector('#smb')
 
-  console.log(`Attempting to scrape result number ${i}, retry number ${retries}`);
+  console.log(`Attempting to scrape result number ${resultIndex}, retry number ${retries}`);
 
-  var resultLink = resultsContainer.querySelector(`div.isv-r[data-ri="${i}"]>a`);
+  var resultLink = resultsContainer.querySelector(`div.isv-r[data-ri="${resultIndex}"]>a`);
+
+  if (!resultLink) {
+    console.log(`Skipping result number ${resultIndex}`)
+    resultIndex++;
+    setTimeout(scrapeResults, 0, 0);
+    return
+  }
+
   resultLink.click()
 
   if (canParseLink(resultLink)) {
-    console.log(`Got result number ${i}`);
+    console.log(`Got result number ${resultIndex}`);
     resultLink.scrollIntoView();
     parsedResults.push(parseResultLink(resultLink));
+    resultIndex++;
     chrome.extension.sendRequest({
       method: 'progress',
       id: morphicId,
@@ -80,7 +89,7 @@ function scrapeResults(retries = 0) {
     seeMoreButton.click();
     setTimeout(scrapeResults, 1000, retries + 1);
   } else {
-    console.log(`Didn't get result number ${i}, sleeping.`);
+    console.log(`Didn't get result number ${resultIndex}, sleeping.`);
     setTimeout(scrapeResults, 50, retries + 1);
   }
 }
