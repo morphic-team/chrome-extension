@@ -1,4 +1,4 @@
-// var endpoint = 'https://api.morphs.io/upload-google-results';
+// var endpoint = 'https://morphs.io/api/upload-google-results';
 var endpoint = 'http://localhost:5000/upload-google-results';
 
 function getOptions(id, message, progress, buttons) {

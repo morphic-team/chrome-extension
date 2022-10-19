@@ -1,22 +1,45 @@
-var linkRegex = /.*?imgres\?imgurl=(.*?)&imgrefurl/;
-var visibleLinkRegex = /.*?imgrefurl=(.*?)&/;
+var LINK_REGEX = /.*?imgres\?imgurl=(.*?)&imgrefurl/;
+var VISIBLE_LINK_REGEX = /.*?imgrefurl=(.*?)&/;
 var morphicId = /morphic_id:(\d+)/.exec(window.location.href)[1];
 
 var RESULTS_TO_SCRAPE = 400;
 var MAX_RETRIES = 5;
 var parsedResults = new Array();
-var resultsContainer = document.querySelector('#rg_s');
+
+var resultsContainer = document.querySelector('.islrc');
+
+
+var i = 1
 
 function parseResultLink(link) {
   var href = link.getAttribute('href');
   return {
-    image_link: unescape(unescape(href.match(linkRegex)[1])),
-    visible_link: unescape(unescape(href.match(visibleLinkRegex)[1])),
+    image_link: unescape(unescape(href.match(LINK_REGEX)[1])),
+    visible_link: unescape(unescape(href.match(VISIBLE_LINK_REGEX)[1])),
   }
 }
 
 function canParseLink(link) {
-  return link !== null && link.getAttribute('href').match(linkRegex);
+  if (link == null) {
+    return false;
+  }
+
+  href = link.getAttribute('href');
+
+  if (href == null) {
+    return false;
+  }
+
+  return href.match(LINK_REGEX);
+}
+
+function canClickLink(link) {
+  if (link == null) {
+    return false;
+  }
+  link.scrollIntoView();
+  link.click();
+  return true;
 }
 
 function scrapeResults(retries = 0) {
@@ -53,13 +76,35 @@ function scrapeResults(retries = 0) {
     return;
   }
 
-  var i = parsedResults.length;
-  var seeMoreButton = document.querySelector('#smb')
+  var seeMoreButton = document.querySelector('input.mye4qd')
   console.log(`Attempting to scrape result number ${i}, retry number ${retries}`);
-  var resultLink = resultsContainer.querySelector(`div.rg_di[data-ri="${i}"]>a[href]`);
-  if (canParseLink(resultLink)) {
+
+  var resultContainer = resultsContainer.querySelector(`div.isv-r[data-ri="${i}"]`);
+
+  if (resultContainer == null) {
+    if (seeMoreButton !== null) {
+      console.log(`Found see more button, clicking then sleeping.`);
+      seeMoreButton.click();
+      setTimeout(scrapeResults, 1000, retries + 1);
+    }
+
+    console.log(`Didn't get result container number ${i}, sleeping.`);
+    setTimeout(scrapeResults, 1000, retries + 1);
+  }
+
+  var resultLink = resultContainer.querySelector('a');
+
+  if (!resultLink.matches('.islib')) {
+    i += 1;
+    console.log(`Got invalid result link number ${i}, skipping`);
+    setTimeout(scrapeResults, 0, 0);
+    return;
+  }
+
+  if (canClickLink(resultLink) && canParseLink(resultLink)) {
     console.log(`Got result number ${i}`);
     resultLink.scrollIntoView();
+    i += 1;
     parsedResults.push(parseResultLink(resultLink));
     chrome.extension.sendRequest({
       method: 'progress',
@@ -70,10 +115,6 @@ function scrapeResults(retries = 0) {
       },
     })
     setTimeout(scrapeResults, 0, 0);
-  } else if (seeMoreButton !== null) {
-    console.log(`Found see more button, clicking then sleeping.`);
-    seeMoreButton.click();
-    setTimeout(scrapeResults, 1000, retries + 1);
   } else {
     console.log(`Didn't get result number ${i}, sleeping.`);
     setTimeout(scrapeResults, 1000, retries + 1);
