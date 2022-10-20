@@ -19,16 +19,16 @@ function getProgressPercentage(a, b) {
 }
 
 function sendResults(id, results) {
-  fetch(ENDPOINT_URL, {
-    method: 'POST',
-    body: JSON.stringify({
+  $.ajax({
+    type: 'POST',
+    url: endpoint,
+    data: JSON.stringify({
       morphic_id: id,
       results: JSON.stringify(results),
     }),
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  })
+    contentType: "application/json; charset=utf-8",
+    dataType: "json"
+  });
 }
 
 var handler = {
