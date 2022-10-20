@@ -21,16 +21,16 @@ function getProgress(a, b) {
 
 function sendResults(id, results) {
   console.log(results);
-  $.ajax({
-    type: 'POST',
-    url: endpoint,
-    data: JSON.stringify({
-      morphic_id: id,
-      results: JSON.stringify(results),
-    }),
-    contentType: "application/json; charset=utf-8",
-    dataType: "json"
-  });
+  // $.ajax({
+  //   type: 'POST',
+  //   url: endpoint,
+  //   data: JSON.stringify({
+  //     morphic_id: id,
+  //     results: JSON.stringify(results),
+  //   }),
+  //   contentType: "application/json; charset=utf-8",
+  //   dataType: "json"
+  // });
 }
 
 var handler = {
