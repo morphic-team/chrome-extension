@@ -11,7 +11,6 @@ function getNotificationOptions(id, message, progress) {
     message: message,
     progress: progress,
     priority: 2,
-    buttons: buttons,
   }
 }
 
@@ -20,17 +19,16 @@ function getProgressPercentage(a, b) {
 }
 
 function sendResults(id, results) {
-  console.log(id, results);
-  // $.ajax({
-  //   type: 'POST',
-  //   url: endpoint,
-  //   data: JSON.stringify({
-  //     morphic_id: id,
-  //     results: JSON.stringify(results),
-  //   }),
-  //   contentType: "application/json; charset=utf-8",
-  //   dataType: "json"
-  // });
+  fetch(ENDPOINT_URL, {
+    method: 'POST',
+    body: JSON.stringify({
+      morphic_id: id,
+      results: JSON.stringify(results),
+    }),
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  })
 }
 
 var handler = {
@@ -44,14 +42,14 @@ var handler = {
     chrome.notifications.update(id, getNotificationOptions(
       id,
       `Scraping results (${args.resultsCount} / ${args.resultsToScrape}).`,
-      getProgress(args.resultsCount, args.resultsToScrape)
+      getProgressPercentage(args.resultsCount, args.resultsToScrape),
     ));
   },
   done: (id, args) => {
     chrome.notifications.update(id, getNotificationOptions(
       id,
       `Done scraping results, got ${args.resultsCount}.`,
-      getProgress(1, 1)
+      getProgressPercentage(1, 1),
     ));
   },
   results: (id, args) => {
@@ -61,12 +59,12 @@ var handler = {
     chrome.notifications.update(id, getNotificationOptions(
       id,
       `Failed after scraping ${args.resultsCount} of ${args.resultsToScrape} results.`,
-      getProgress(args.resultsCount, args.resultsToScrape),
+      getProgressPercentage(args.resultsCount, args.resultsToScrape),
     ))
   },
 }
 
-chrome.extension.onRequest.addListener((request, _, _) => {
+chrome.extension.onRequest.addListener((request) => {
   if (handler[request.method] !== null) {
     handler[request.method](request.id, request.args);
   }

@@ -1,4 +1,5 @@
 const RESULTS_TO_SCRAPE = 400;
+const RESULT_TIMEOUT = 250;
 const RETRY_TIMEOUT = 250;
 const MAX_RETRIES = 20;
 
@@ -12,8 +13,8 @@ const RESULT_SELECTOR_TEMPLATE = 'div.isv-r[data-ri="resultIndex"]';
 const SEARCH_RESULT_LINK_SELECTOR = '.islib'
 
 
-function doubleDecodeUri(uri) {
-  return document.decodeURI(document.decodeURI(uri))
+function doubleDecodeUriComponent(uri) {
+  return window.decodeURIComponent(window.decodeURIComponent(uri))
 }
 
 
@@ -23,6 +24,7 @@ function sendStart(id) {
     id,
   })
 }
+
 
 function sendProgress(id, resultsCount, resultsToScrape) {
   chrome.extension.sendRequest({
@@ -35,6 +37,7 @@ function sendProgress(id, resultsCount, resultsToScrape) {
   })
 }
 
+
 function sendResults(id, results) {
   chrome.extension.sendRequest({
     method: 'results',
@@ -42,6 +45,7 @@ function sendResults(id, results) {
     args: { results, },
   })
 }
+
 
 function sendDone(id, resultsCount) {
   chrome.extension.sendRequest({
@@ -51,7 +55,8 @@ function sendDone(id, resultsCount) {
   });
 }
 
-function sendFailure(resultsCount, resultsToScrape) {
+
+function sendFailure(id, resultsCount, resultsToScrape) {
   chrome.extension.sendRequest({
     method: 'failure',
     id,
@@ -62,20 +67,21 @@ function sendFailure(resultsCount, resultsToScrape) {
   });
 }
 
+
 // https://lihautan.com/retry-async-function-with-callback-promise/
-function retry(fn, n, callback) {
+function retry(fn, n, cb) {
   let attempt = 0;
 
   function _retry() {
     fn((error, data) => {
       if (!error) {
-        callback(null, data);
+        cb(null, data);
       } else {
         attempt++;
         if (attempt > n) {
-          cb(new Error(f`Failed after retrying ${n} times.`));
+          cb(new Error(`Failed after retrying ${n} times.`));
         } else {
-          _retry();
+          setTimeout(_retry, RETRY_TIMEOUT);
         }
       }
     });
@@ -84,13 +90,15 @@ function retry(fn, n, callback) {
   _retry();
 };
 
+
 function parseResultLink(link) {
   var href = link.getAttribute('href');
   return {
-    image_link: doubleDecodeUri(href.match(LINK_REGEX)[1]),
-    visible_link: document.decodeURI(href.match(VISIBLE_LINK_REGEX)[1]),
+    image_link: doubleDecodeUriComponent(href.match(LINK_REGEX)[1]),
+    visible_link: doubleDecodeUriComponent(href.match(VISIBLE_LINK_REGEX)[1]),
   }
 }
+
 
 function canParseLink(link) {
   if (link == null) {
@@ -119,6 +127,7 @@ function scrapeResult(cursor, callback) {
   const resultSelector = RESULT_SELECTOR_TEMPLATE.replace('resultIndex', cursor);
   const resultContainer = resultsContainer.querySelector(resultSelector);
 
+
   if (resultContainer == null) {
     const seeMoreButton = document.querySelector(SEE_MORE_BUTTON_SELECTOR);
 
@@ -131,6 +140,8 @@ function scrapeResult(cursor, callback) {
     return
   }
 
+  resultContainer.scrollIntoView();
+
   const resultLink = resultContainer.querySelector('a');
 
   if (resultLink == null) {
@@ -139,14 +150,12 @@ function scrapeResult(cursor, callback) {
   }
 
   // Check if the result link is a normal image search result.
-  if (!resultLink.matches(SEARCH_RESULT_SELECTOR)) {
+  if (!resultLink.matches(SEARCH_RESULT_LINK_SELECTOR)) {
     // Skip
     callback(null, { cursor: cursor + 1 });
     return
   }
 
-
-  resultLink.scrollIntoView();
   resultLink.click();
 
   // click link if not null
@@ -154,7 +163,7 @@ function scrapeResult(cursor, callback) {
     console.log(`Got search result ${cursor}`);
     resultLink.scrollIntoView();
     const scrapedResult = parseResultLink(resultLink);
-    callback(null, { scrapedResult, cursor: cursor + 1});
+    callback(null, { scrapedResult, cursor: cursor + 1 });
     return
   } else {
     callback(new Error(`Unable to parse ${cursor}`));
@@ -162,12 +171,13 @@ function scrapeResult(cursor, callback) {
   }
 };
 
+
 function scrapeResults() {
   const morphicId = MORPHIC_ID_REGEX.exec(window.location.href)[1];
 
   const scrapedResults = new Array();
 
-  sendStart();
+  sendStart(morphicId);
 
   let cursor = 0;
 
@@ -177,22 +187,32 @@ function scrapeResults() {
     })
   }
 
-  retry(_scrapeResult, MAX_RETRIES, (error, data) => {
-    if (error != null) {
-      sendFailure(scrapedResults.length, RESULTS_TO_SCRAPE);
-      window.close();
-    }
+  function _scrapeResults() {
+    retry(_scrapeResult, MAX_RETRIES, (error, data) => {
+      if (scrapedResults.length == RESULTS_TO_SCRAPE) {
+        sendResults(morphicId, scrapedResults);
+        sendDone(morphicId, scrapedResults.length);
+        window.close();
+      }
 
-    if (data.scrapedResult != null) {
-      scrapedResults.push(data.scrapedResult);
-      sendProgress(morphicId, scrapedResults.length, RESULTS_TO_SCRAPE);
-    }
+      if (error != null) {
+        sendFailure(morphicId, scrapedResults.length, RESULTS_TO_SCRAPE);
+        window.close();
+      }
 
-    cursor = data.cursor;
-  });
+      if (data.scrapedResult != null) {
+        scrapedResults.push(data.scrapedResult);
+        sendProgress(morphicId, scrapedResults.length, RESULTS_TO_SCRAPE);
+      }
 
-  sendResults(scrapedResults);
-  sendDone(scrapedResults.length);
+      cursor = data.cursor;
+
+      window.setTimeout(_scrapeResults, RESULT_TIMEOUT);
+    });
+  }
+
+  _scrapeResults();
 }
+
 
 scrapeResults();
