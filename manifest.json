@@ -1,5 +1,6 @@
 {
-  "name": "Morphs.io Chrome Extension",
+  "update_url": "https://clients2.google.com/service/update2/crx",
+  "name": "Morphs.io chrome extension",
   "manifest_version": 2,
   "version": "0.0.11",
   "permissions": [
