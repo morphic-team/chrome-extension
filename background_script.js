@@ -1,9 +1,9 @@
-// var endpoint = 'https://morphs.io/api/upload-google-results';
-var endpoint = 'http://localhost:5000/upload-google-results';
+var ENDPOINT_URL = 'https://morphs.io/api/upload-google-results';
+// var ENDPOINT_URL = 'http://localhost:5000/upload-google-results';
 
-function getOptions(id, message, progress, buttons) {
-  var buttons = typeof buttons !== 'undefined' ? buttons : null;
-  var progress = typeof progress !== 'undefined' ?  progress : 0;
+
+function getNotificationOptions(id, message, progress) {
+  var progress = typeof progress !== 'undefined' ? progress : 0;
   return {
     type: 'progress',
     title: `Morphic search ${id}.`,
@@ -15,12 +15,12 @@ function getOptions(id, message, progress, buttons) {
   }
 }
 
-function getProgress(a, b) {
+function getProgressPercentage(a, b) {
   return Math.round((a / b) * 100);
 }
 
 function sendResults(id, results) {
-  console.log(results);
+  console.log(id, results);
   // $.ajax({
   //   type: 'POST',
   //   url: endpoint,
@@ -34,65 +34,39 @@ function sendResults(id, results) {
 }
 
 var handler = {
-  started: function(id) {
-    chrome.notifications.create(id, getOptions(
+  started: (id) => {
+    chrome.notifications.create(id, getNotificationOptions(
       id,
       'Started scraping results.'
     ));
   },
-  progress: function(id, args) {
-    chrome.notifications.update(id, getOptions(
+  progress: (id, args) => {
+    chrome.notifications.update(id, getNotificationOptions(
       id,
       `Scraping results (${args.resultsCount} / ${args.resultsToScrape}).`,
       getProgress(args.resultsCount, args.resultsToScrape)
     ));
   },
-  done: function(id, args) {
-    chrome.notifications.update(id, getOptions(
+  done: (id, args) => {
+    chrome.notifications.update(id, getNotificationOptions(
       id,
       `Done scraping results, got ${args.resultsCount}.`,
       getProgress(1, 1)
     ));
   },
-  failure: function(id, args) {
-    chrome.notifications.onButtonClicked.addListener(function(notificationId, buttonIndex) {
-      if (notificationId === id) {
-        switch (buttonIndex) {
-          case 0:
-            sendResults(id, args.results)
-            chrome.notifications.update(id, getOptions(
-              id,
-              `Done scraping results, got ${args.resultsCount}.`,
-              getProgress(args.resultsCount, args.resultsToScrape),
-              []
-            ));
-            break;
-          case 1:
-            chrome.notifications.clear(id);
-        }
-      }
-    });
-
-    chrome.notifications.update(id, getOptions(
+  results: (id, args) => {
+    sendResults(id, args.results);
+  },
+  failure: (id, args) => {
+    chrome.notifications.update(id, getNotificationOptions(
       id,
       `Failed after scraping ${args.resultsCount} of ${args.resultsToScrape} results.`,
       getProgress(args.resultsCount, args.resultsToScrape),
-      [
-        {
-          title: `Accept partial results`,
-        },
-        {
-          title: 'Reject partial results',
-        },
-      ]
     ))
   },
-  sendResults: function(id, args) {
-    sendResults(id, args.results);
-  }
 }
 
-chrome.extension.onRequest.addListener(function(request, sender, sendResponse) {
+chrome.extension.onRequest.addListener((request, _, _) => {
   if (handler[request.method] !== null) {
     handler[request.method](request.id, request.args);
   }

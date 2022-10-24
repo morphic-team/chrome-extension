@@ -1,23 +1,13 @@
-var LINK_REGEX = /.*?imgres\?imgurl=(.*?)&imgrefurl/;
-var VISIBLE_LINK_REGEX = /.*?imgrefurl=(.*?)&/;
-var morphicId = /morphic_id:(\d+)/.exec(window.location.href)[1];
 
-var RESULTS_TO_SCRAPE = 400;
-var MAX_RETRIES = 5;
-var parsedResults = new Array();
-
-var resultsContainer = document.querySelector('.islrc');
-
-
-var i = 1
 
 function parseResultLink(link) {
   var href = link.getAttribute('href');
   return {
-    image_link: unescape(unescape(href.match(LINK_REGEX)[1])),
-    visible_link: unescape(unescape(href.match(VISIBLE_LINK_REGEX)[1])),
+    image_link: doubleDecodeUri(href.match(LINK_REGEX)[1]),
+    visible_link: document.decodeURI(href.match(VISIBLE_LINK_REGEX)[1]),
   }
 }
+
 
 function canParseLink(link) {
   if (link == null) {
@@ -33,96 +23,146 @@ function canParseLink(link) {
   return href.match(LINK_REGEX);
 }
 
-function canClickLink(link) {
-  if (link == null) {
-    return false;
-  }
-  link.scrollIntoView();
-  link.click();
-  return true;
+const RESULTS_TO_SCRAPE = 400;
+const RETRY_TIMEOUT = 250;
+const MAX_RETRIES = 20;
+
+const LINK_REGEX = /.*?imgres\?imgurl=(.*?)&imgrefurl/;
+const VISIBLE_LINK_REGEX = /.*?imgrefurl=(.*?)&/;
+const MORPHIC_ID_REGEX = /morphic_id:(\d+)/;
+
+const RESULT_CONTAINER_SELECTOR = '.islrc';
+const SEE_MORE_BUTTON_SELECTOR = 'input.mye4qd';
+const RESULT_SELECTOR_TEMPLATE = 'div.isv-r[data-ri="resultIndex"]';
+
+
+function doubleDecodeUri(uri) {
+  return document.decodeURI(document.decodeURI(uri))
 }
 
-function scrapeResults(retries = 0) {
-  if (parsedResults.length >= RESULTS_TO_SCRAPE) {
-    chrome.extension.sendRequest({
-      method: 'sendResults',
-      id: morphicId,
-      args: {
-        results: parsedResults,
-      },
-    })
-    chrome.extension.sendRequest({
-      method: 'done',
-      id: morphicId,
-      args: {
-        resultsCount: parsedResults.length,
-      },
-    });
-    window.close();
-    return;
-  }
+if (!resultLink.matches('.islib')) {
+  i += 1;
+  console.log(`Got invalid result link number ${i}, skipping`);
+  setTimeout(scrapeResults, 0, 0);
+  return;
+}
 
-  if (retries > MAX_RETRIES) {
-    chrome.extension.sendRequest({
-      method: 'failure',
-      id: morphicId,
-      args: {
-        results: parsedResults,
-        resultsCount: parsedResults.length,
-        resultsToScrape: RESULTS_TO_SCRAPE,
-      },
-    });
-    window.close();
-    return;
-  }
+// click link if not null
+if (canClickLink(resultLink) && canParseLink(resultLink)) {
+  console.log(`Got result number ${i}`);
+  resultLink.scrollIntoView();
+  i += 1;
+  parsedResults.push(parseResultLink(resultLink));
+  setTimeout(scrapeResults, 0, 0);
+} else {
+  console.log(`Didn't get result number ${i}, sleeping.`);
+  setTimeout(scrapeResults, 1000, retries + 1);
+}
 
-  var seeMoreButton = document.querySelector('input.mye4qd')
-  console.log(`Attempting to scrape result number ${i}, retry number ${retries}`);
+function sendStart(id) {
+  chrome.extension.sendRequest({
+    method: 'started',
+    id,
+  })
+}
 
-  var resultContainer = resultsContainer.querySelector(`div.isv-r[data-ri="${i}"]`);
+function sendProgress(id, resultsCount, resultsToScrape) {
+  chrome.extension.sendRequest({
+    method: 'progress',
+    id,
+    args: {
+      resultsCount,
+      resultsToScrape,
+    },
+  })
+}
 
-  if (resultContainer == null) {
-    if (seeMoreButton !== null) {
-      console.log(`Found see more button, clicking then sleeping.`);
-      seeMoreButton.click();
-      setTimeout(scrapeResults, 1000, retries + 1);
+function sendResults(id, results) {
+  chrome.extension.sendRequest({
+    method: 'results',
+    id,
+    args: { results, },
+  })
+}
+
+function sendDone(id, resultsCount) {
+  chrome.extension.sendRequest({
+    method: 'done',
+    id,
+    args: { resultsCount, },
+  });
+}
+
+function sendFailure(resultsCount, resultsToScrape) {
+  chrome.extension.sendRequest({
+    method: 'failure',
+    id,
+    args: {
+      resultsCount,
+      resultsToScrape,
+    },
+  });
+}
+
+function tryScrapeResult(resultIndex);
+
+function scrapeResult(resultIndex, onSuccess, onFailure, retryCounter = 0) {
+  return new Promise((resolve, reject) => {
+    if (retryCounter > MAX_RETRIES) {
+      return reject();
     }
 
-    console.log(`Didn't get result container number ${i}, sleeping.`);
-    setTimeout(scrapeResults, 1000, retries + 1);
-  }
+    const resultSelector = RESULT_SELECTOR_TEMPLATE.replace('resultIndex', resultIndex);
+    const resultContainer = resultsContainer.querySelector(resultSelector);
 
-  var resultLink = resultContainer.querySelector('a');
+    console.log(`Attempting to scrape result ${resultIndex}, retry number ${retryCounter}`);
 
-  if (!resultLink.matches('.islib')) {
-    i += 1;
-    console.log(`Got invalid result link number ${i}, skipping`);
-    setTimeout(scrapeResults, 0, 0);
-    return;
-  }
+    if (resultContainer == null) {
+      const seeMoreButton = document.querySelector(SEE_MORE_BUTTON_SELECTOR);
 
-  if (canClickLink(resultLink) && canParseLink(resultLink)) {
-    console.log(`Got result number ${i}`);
-    resultLink.scrollIntoView();
-    i += 1;
-    parsedResults.push(parseResultLink(resultLink));
-    chrome.extension.sendRequest({
-      method: 'progress',
-      id: morphicId,
-      args: {
-        resultsToScrape: RESULTS_TO_SCRAPE,
-        resultsCount: parsedResults.length,
-      },
-    })
-    setTimeout(scrapeResults, 0, 0);
-  } else {
-    console.log(`Didn't get result number ${i}, sleeping.`);
-    setTimeout(scrapeResults, 1000, retries + 1);
-  }
+      if (seeMoreButton !== null) {
+        console.log('Clicking see more button.');
+        seeMoreButton.click();
+      }
+
+      console.log(`Scheduling retry`);
+      setTimeout(scrapeResult, RETRY_TIMEOUT, retryCounter + 1);
+      return
+    }
+
+    const resultLink = resultContainer.querySelector('a');
+
+    // Check if the result link is a normal image search result.
+    if (!resultLink.matches('.islib')) {
+      console.log(`Got invalid result link number ${i}, skipping`);
+      setTimeout(scrapeResults, 0, 0);
+      return;
+    }
+  })
+}
+
+function scrapeResults() {
+  const scrapedResults = new Array();
+
+  const resultsContainer = document.querySelector(RESULT_CONTAINER_SELECTOR);
+
+  let resultIndex = 0;
+
+  scrapeResult(resultsContainer, resultIndex);
+
+  return scrapedResults;
+}
+
+
+function main() {
+  const morphicId = MORPHIC_ID_REGEX.exec(window.location.href)[1];
+
+  const scrapedResults = scrapeResults();
+
+  sendStart();
+  sendResults(scrapedResults);
+  sendDone(scrapedResults.length);
+  window.close();
 }
 
 scrapeResults();
-chrome.extension.sendRequest({
-  method: 'started',
-  id: morphicId,
-})
