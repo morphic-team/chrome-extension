@@ -1,28 +1,3 @@
-
-
-function parseResultLink(link) {
-  var href = link.getAttribute('href');
-  return {
-    image_link: doubleDecodeUri(href.match(LINK_REGEX)[1]),
-    visible_link: document.decodeURI(href.match(VISIBLE_LINK_REGEX)[1]),
-  }
-}
-
-
-function canParseLink(link) {
-  if (link == null) {
-    return false;
-  }
-
-  href = link.getAttribute('href');
-
-  if (href == null) {
-    return false;
-  }
-
-  return href.match(LINK_REGEX);
-}
-
 const RESULTS_TO_SCRAPE = 400;
 const RETRY_TIMEOUT = 250;
 const MAX_RETRIES = 20;
@@ -34,30 +9,13 @@ const MORPHIC_ID_REGEX = /morphic_id:(\d+)/;
 const RESULT_CONTAINER_SELECTOR = '.islrc';
 const SEE_MORE_BUTTON_SELECTOR = 'input.mye4qd';
 const RESULT_SELECTOR_TEMPLATE = 'div.isv-r[data-ri="resultIndex"]';
+const SEARCH_RESULT_LINK_SELECTOR = '.islib'
 
 
 function doubleDecodeUri(uri) {
   return document.decodeURI(document.decodeURI(uri))
 }
 
-if (!resultLink.matches('.islib')) {
-  i += 1;
-  console.log(`Got invalid result link number ${i}, skipping`);
-  setTimeout(scrapeResults, 0, 0);
-  return;
-}
-
-// click link if not null
-if (canClickLink(resultLink) && canParseLink(resultLink)) {
-  console.log(`Got result number ${i}`);
-  resultLink.scrollIntoView();
-  i += 1;
-  parsedResults.push(parseResultLink(resultLink));
-  setTimeout(scrapeResults, 0, 0);
-} else {
-  console.log(`Didn't get result number ${i}, sleeping.`);
-  setTimeout(scrapeResults, 1000, retries + 1);
-}
 
 function sendStart(id) {
   chrome.extension.sendRequest({
@@ -104,65 +62,137 @@ function sendFailure(resultsCount, resultsToScrape) {
   });
 }
 
-function tryScrapeResult(resultIndex);
+// https://lihautan.com/retry-async-function-with-callback-promise/
+function retry(fn, n, callback) {
+  let attempt = 0;
 
-function scrapeResult(resultIndex, onSuccess, onFailure, retryCounter = 0) {
-  return new Promise((resolve, reject) => {
-    if (retryCounter > MAX_RETRIES) {
-      return reject();
-    }
-
-    const resultSelector = RESULT_SELECTOR_TEMPLATE.replace('resultIndex', resultIndex);
-    const resultContainer = resultsContainer.querySelector(resultSelector);
-
-    console.log(`Attempting to scrape result ${resultIndex}, retry number ${retryCounter}`);
-
-    if (resultContainer == null) {
-      const seeMoreButton = document.querySelector(SEE_MORE_BUTTON_SELECTOR);
-
-      if (seeMoreButton !== null) {
-        console.log('Clicking see more button.');
-        seeMoreButton.click();
+  function _retry() {
+    fn((error, data) => {
+      if (!error) {
+        callback(null, data);
+      } else {
+        attempt++;
+        if (attempt > n) {
+          cb(new Error(f`Failed after retrying ${n} times.`));
+        } else {
+          _retry();
+        }
       }
+    });
+  }
 
-      console.log(`Scheduling retry`);
-      setTimeout(scrapeResult, RETRY_TIMEOUT, retryCounter + 1);
-      return
-    }
+  _retry();
+};
 
-    const resultLink = resultContainer.querySelector('a');
-
-    // Check if the result link is a normal image search result.
-    if (!resultLink.matches('.islib')) {
-      console.log(`Got invalid result link number ${i}, skipping`);
-      setTimeout(scrapeResults, 0, 0);
-      return;
-    }
-  })
+function parseResultLink(link) {
+  var href = link.getAttribute('href');
+  return {
+    image_link: doubleDecodeUri(href.match(LINK_REGEX)[1]),
+    visible_link: document.decodeURI(href.match(VISIBLE_LINK_REGEX)[1]),
+  }
 }
 
-function scrapeResults() {
-  const scrapedResults = new Array();
+function canParseLink(link) {
+  if (link == null) {
+    return false;
+  }
+
+  href = link.getAttribute('href');
+
+  if (href == null) {
+    return false;
+  }
+
+  return href.match(LINK_REGEX);
+}
+
+
+function scrapeResult(cursor, callback) {
+  console.log(`Attempting to scrape result ${cursor}`);
 
   const resultsContainer = document.querySelector(RESULT_CONTAINER_SELECTOR);
 
-  let resultIndex = 0;
+  if (resultsContainer == null) {
+    callback(new Error('Results container is null'));
+  }
 
-  scrapeResult(resultsContainer, resultIndex);
+  const resultSelector = RESULT_SELECTOR_TEMPLATE.replace('resultIndex', cursor);
+  const resultContainer = resultsContainer.querySelector(resultSelector);
 
-  return scrapedResults;
-}
+  if (resultContainer == null) {
+    const seeMoreButton = document.querySelector(SEE_MORE_BUTTON_SELECTOR);
+
+    if (seeMoreButton !== null) {
+      console.log('Clicking see more button.');
+      seeMoreButton.click();
+    }
+
+    callback(new Error(`Result container ${cursor} is null`))
+    return
+  }
+
+  const resultLink = resultContainer.querySelector('a');
+
+  if (resultLink == null) {
+    callback(new Error(`Result link ${cursor} is null`));
+    return
+  }
+
+  // Check if the result link is a normal image search result.
+  if (!resultLink.matches(SEARCH_RESULT_SELECTOR)) {
+    // Skip
+    callback(null, { cursor: cursor + 1 });
+    return
+  }
 
 
-function main() {
+  resultLink.scrollIntoView();
+  resultLink.click();
+
+  // click link if not null
+  if (canParseLink(resultLink)) {
+    console.log(`Got search result ${cursor}`);
+    resultLink.scrollIntoView();
+    const scrapedResult = parseResultLink(resultLink);
+    callback(null, { scrapedResult, cursor: cursor + 1});
+    return
+  } else {
+    callback(new Error(`Unable to parse ${cursor}`));
+    return
+  }
+};
+
+function scrapeResults() {
   const morphicId = MORPHIC_ID_REGEX.exec(window.location.href)[1];
 
-  const scrapedResults = scrapeResults();
+  const scrapedResults = new Array();
 
   sendStart();
+
+  let cursor = 0;
+
+  function _scrapeResult(callback) {
+    scrapeResult(cursor, (error, data) => {
+      callback(error, data);
+    })
+  }
+
+  retry(_scrapeResult, MAX_RETRIES, (error, data) => {
+    if (error != null) {
+      sendFailure(scrapedResults.length, RESULTS_TO_SCRAPE);
+      window.close();
+    }
+
+    if (data.scrapedResult != null) {
+      scrapedResults.push(data.scrapedResult);
+      sendProgress(morphicId, scrapedResults.length, RESULTS_TO_SCRAPE);
+    }
+
+    cursor = data.cursor;
+  });
+
   sendResults(scrapedResults);
   sendDone(scrapedResults.length);
-  window.close();
 }
 
 scrapeResults();
