@@ -15,20 +15,21 @@ function getNotificationOptions(id, message, progress) {
 }
 
 function getProgressPercentage(a, b) {
-  return Math.round((a / b) * 100);
+  let percentage = Math.round((a / b) * 100);
+  return Math.min(Math.max(percentage, 0), 100);
 }
 
 function sendResults(id, results) {
-  $.ajax({
-    type: 'POST',
-    url: endpoint,
-    data: JSON.stringify({
+  fetch(ENDPOINT_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8'
+    },
+    body: JSON.stringify({
       morphic_id: id,
-      results: JSON.stringify(results),
-    }),
-    contentType: "application/json; charset=utf-8",
-    dataType: "json"
-  });
+      results: JSON.stringify(results)
+    })
+  })
 }
 
 var handler = {
@@ -64,7 +65,7 @@ var handler = {
   },
 }
 
-chrome.extension.onRequest.addListener((request) => {
+chrome.runtime.onMessage.addListener((request) => {
   if (handler[request.method] !== null) {
     handler[request.method](request.id, request.args);
   }

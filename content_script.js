@@ -3,8 +3,8 @@ const RESULT_TIMEOUT = 250;
 const RETRY_TIMEOUT = 250;
 const MAX_RETRIES = 20;
 
-const LINK_REGEX = /.*?imgres\?imgurl=(.*?)&imgrefurl/;
-const VISIBLE_LINK_REGEX = /.*?imgrefurl=(.*?)&/;
+const IMAGE_LINK_REGEX = /.*?imgres\?imgurl=([^&]+).*?&imgrefurl=/;
+const VISIBLE_LINK_REGEX = /.*?&imgrefurl=([^&]+)&/;
 const MORPHIC_ID_REGEX = /morphic_id:(\d+)/;
 
 const RESULT_CONTAINER_SELECTOR = '.islrc';
@@ -19,7 +19,7 @@ function doubleDecodeUriComponent(uri) {
 
 
 function sendStart(id) {
-  chrome.extension.sendRequest({
+  chrome.runtime.sendMessage({
     method: 'started',
     id,
   })
@@ -27,7 +27,7 @@ function sendStart(id) {
 
 
 function sendProgress(id, resultsCount, resultsToScrape) {
-  chrome.extension.sendRequest({
+  chrome.runtime.sendMessage({
     method: 'progress',
     id,
     args: {
@@ -39,7 +39,7 @@ function sendProgress(id, resultsCount, resultsToScrape) {
 
 
 function sendResults(id, results) {
-  chrome.extension.sendRequest({
+  chrome.runtime.sendMessage({
     method: 'results',
     id,
     args: { results, },
@@ -48,7 +48,7 @@ function sendResults(id, results) {
 
 
 function sendDone(id, resultsCount) {
-  chrome.extension.sendRequest({
+  chrome.runtime.sendMessage({
     method: 'done',
     id,
     args: { resultsCount, },
@@ -57,7 +57,7 @@ function sendDone(id, resultsCount) {
 
 
 function sendFailure(id, resultsCount, resultsToScrape) {
-  chrome.extension.sendRequest({
+  chrome.runtime.sendMessage({
     method: 'failure',
     id,
     args: {
@@ -94,9 +94,9 @@ function retry(fn, n, cb) {
 function parseResultLink(link) {
   var href = link.getAttribute('href');
   return {
-    image_link: doubleDecodeUriComponent(href.match(LINK_REGEX)[1]),
+    image_link: doubleDecodeUriComponent(href.match(IMAGE_LINK_REGEX)[1]),
     visible_link: doubleDecodeUriComponent(href.match(VISIBLE_LINK_REGEX)[1]),
-  }
+  };
 }
 
 
@@ -111,7 +111,7 @@ function canParseLink(link) {
     return false;
   }
 
-  return href.match(LINK_REGEX);
+  return href.match(VISIBLE_LINK_REGEX);
 }
 
 
